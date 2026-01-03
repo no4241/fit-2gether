@@ -51,6 +51,15 @@
         const { useState, useEffect, useMemo } = React;
 
         // --- FIREBASE INITIALIZATION ---
+        const firebaseConfig = {
+  apiKey: "AIzaSyD4jzxDM14_Db70ZTLO3c4CIp9UU_CZGvs",
+  authDomain: "fit-2gether.firebaseapp.com",
+  projectId: "fit-2gether",
+  storageBucket: "fit-2gether.firebasestorage.app",
+  messagingSenderId: "601749541750",
+  appId: "1:601749541750:web:0e8302ab760f9e33512057",
+  measurementId: "G-PDSBGMTFDN"
+};
         const firebaseConfig = JSON.parse(__firebase_config);
         if (!firebase.apps.length) {
             firebase.initializeApp(firebaseConfig);
