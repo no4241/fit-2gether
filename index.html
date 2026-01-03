@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Fit 2gether">
     
-    <!-- Inline Manifest for Mobile Install -->
+    <!-- Inline Manifest -->
     <link rel="manifest" href='data:application/json,{"name":"Fit 2gether","short_name":"Fit2gether","start_url":".","display":"standalone","background_color":"#0f172a","theme_color":"#0f172a","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/3035/3035313.png","sizes":"512x512","type":"image/png"}]}'>
 
     <!-- External Libraries -->
@@ -85,13 +85,34 @@
         const PLAYERS = ["Max", "Ashley"];
         const getLevel = (exp) => Math.floor((exp || 0) / 1000) + 1;
 
+        // Aggressive compression to keep things under 1MB Firestore limit
+        const compressImage = (file, maxWidth = 500, quality = 0.5) => {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.src = e.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let w = img.width, h = img.height;
+                        if (w > h && w > maxWidth) { h = (h * maxWidth) / w; w = maxWidth; }
+                        else if (h > maxWidth) { w = (w * maxWidth) / h; h = maxWidth; }
+                        canvas.width = w; canvas.height = h;
+                        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                        resolve(canvas.toDataURL('image/jpeg', quality));
+                    };
+                };
+            });
+        };
+
         // --- SUB-COMPONENTS ---
         const CelebrationModal = ({ type, data, onClose }) => {
             if (!type) return null;
             const content = {
                 levelUp: { title: "Level Up!", subtitle: `${data?.player} reached Rank ${data?.level}!`, icon: "star", color: "text-amber-400", bg: "from-amber-500 to-orange-600" },
-                goalReached: { title: "Objective Clear!", subtitle: `${data?.player} reached 3/3 turns!`, icon: "trophy", color: "text-white", bg: "from-emerald-500 to-teal-600" },
-                guildClear: { title: "Guild Clear!", subtitle: "Team Victory! Both heroes at 3/3 turns!", icon: "sparkles", color: "text-yellow-200", bg: "from-rose-600 to-indigo-700" }
+                goalReached: { title: "Goal Clear!", subtitle: `${data?.player} reached 3/3 turns!`, icon: "trophy", color: "text-white", bg: "from-emerald-500 to-teal-600" },
+                guildClear: { title: "Guild Victory!", subtitle: "Team Cleared! Both at 3/3 turns!", icon: "sparkles", color: "text-yellow-200", bg: "from-rose-600 to-indigo-700" }
             };
             const active = content[type];
             return (
@@ -100,7 +121,7 @@
                         <div className="bg-slate-900 rounded-[2.8rem] p-8 text-center space-y-6">
                             <div className="flex justify-center"><Icon name={active.icon} className={`w-16 h-16 ${active.color}`} /></div>
                             <div className="space-y-2">
-                                <h2 className="text-2xl font-black italic uppercase text-white leading-none text-base">{active.title}</h2>
+                                <h2 className="text-2xl font-black italic uppercase text-white leading-none">{active.title}</h2>
                                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{active.subtitle}</p>
                             </div>
                             <button onClick={onClose} className="w-full bg-white text-slate-900 py-4 rounded-2xl font-black uppercase italic">Continue Quest</button>
@@ -114,33 +135,33 @@
             if (!quest) return null;
             return (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-xl">
-                    <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] w-full max-w-sm overflow-hidden shadow-2xl">
+                    <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] w-full max-w-sm overflow-hidden shadow-2xl text-slate-100">
                         <div className="p-6 bg-slate-800/50 flex justify-between items-center border-b border-white/5">
                             <div className="flex items-center gap-3">
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm shadow-lg ${quest.player === 'Max' ? 'bg-sky-500' : 'bg-rose-500'}`}>{quest.player[0]}</div>
-                                <div><h3 className="font-black italic uppercase text-white leading-none text-base">Battle Analysis</h3><p className="text-[9px] font-bold text-slate-500 uppercase mt-1">{quest.dateString}</p></div>
+                                <div><h3 className="font-black italic uppercase leading-none">Record Detail</h3><p className="text-[9px] font-bold text-slate-500 uppercase mt-1">{quest.dateString}</p></div>
                             </div>
                             <button onClick={onClose} className="p-2 bg-slate-700 rounded-full text-slate-300"><Icon name="x" className="w-4 h-4" /></button>
                         </div>
                         <div className="p-6 space-y-6 max-h-[60vh] overflow-y-auto custom-scrollbar text-slate-200">
-                            <div className="flex justify-around bg-slate-950 p-5 rounded-3xl border border-white/5 shadow-inner">
+                            <div className="flex justify-around bg-slate-950 p-5 rounded-3xl border border-white/5">
                                 <div className="text-center"><p className="text-[8px] font-black text-slate-500 uppercase">Turns</p><p className="text-xl font-black text-white italic">{quest.turns}</p></div>
                                 <div className="w-px bg-white/5" /><div className="text-center"><p className="text-[8px] font-black text-slate-500 uppercase">Sides</p><p className="text-xl font-black text-white italic">{quest.sideQuestCount || 0}</p></div>
                                 <div className="w-px bg-white/5" /><div className="text-center"><p className="text-[8px] font-black text-slate-500 uppercase">EXP</p><p className="text-xl font-black text-amber-400 italic">+{quest.expGained}</p></div>
                             </div>
                             <div className="space-y-4">
                                 {quest.cardio?.filter(c => c.time > 0).map((c, i) => (
-                                    <div key={i} className="flex justify-between bg-slate-950/80 p-4 rounded-2xl border border-white/5 shadow-sm"><span className="text-sm font-bold">{c.type}</span><span className="text-sm font-black text-rose-400">{c.time}m</span></div>
+                                    <div key={i} className="flex justify-between bg-slate-950/80 p-4 rounded-2xl border border-white/5"><span className="text-sm font-bold">{c.type}</span><span className="text-sm font-black text-rose-400">{c.time}m</span></div>
                                 ))}
                                 {quest.strength?.filter(s => s.time > 0).map((s, i) => (
-                                    <div key={i} className="bg-slate-950/80 p-5 rounded-2xl border border-white/5 space-y-2 shadow-sm">
+                                    <div key={i} className="bg-slate-950/80 p-5 rounded-2xl border border-white/5 space-y-2">
                                         <div className="flex justify-between border-b border-white/5 pb-1"><span className="text-sm font-bold">{s.type}</span><span className="text-sm font-black text-sky-400">{s.time}m</span></div>
                                         <p className="text-[11px] text-slate-400 italic whitespace-pre-wrap">{s.exercises}</p>
                                     </div>
                                 ))}
                             </div>
                         </div>
-                        <div className="p-4 bg-slate-900"><button onClick={onClose} className="w-full bg-slate-800 text-white py-4 rounded-2xl font-black italic uppercase shadow-xl active:scale-[0.98]">Close</button></div>
+                        <div className="p-4 bg-slate-900"><button onClick={onClose} className="w-full bg-slate-800 text-white py-4 rounded-2xl font-black italic uppercase shadow-xl active:scale-[0.98]">Return</button></div>
                     </div>
                 </div>
             );
@@ -171,7 +192,7 @@
                         } else {
                             await auth.signInAnonymously();
                         }
-                    } catch (e) { console.error("Auth failed:", e); setErrorMessage("Connection Error: " + e.message); }
+                    } catch (e) { setErrorMessage("Auth Failed. Check sign-in method in Firebase."); }
                 };
                 initAuth();
                 return auth.onAuthStateChanged(setUser);
@@ -188,39 +209,35 @@
                 return () => { unsubQuests(); unsubStats(); };
             }, [user]);
 
-            // Updates local state for real-time typing
             const updateLocalProfileStat = (player, field, value) => {
-                const val = parseInt(value) || 0;
-                setPlayerData(p => ({ ...p, [player]: { ...p[player], [field]: val } }));
+                setPlayerData(p => ({ ...p, [player]: { ...p[player], [field]: parseInt(value) || 0 } }));
             };
 
-            // Explicitly saves profile to database
             const handleSaveProfile = async () => {
                 if (!user) return;
                 setIsProfileSaving(true);
-                setErrorMessage("");
                 try {
                     const statsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('stats');
-                    // Save both players
-                    await Promise.all(PLAYERS.map(player => 
-                        statsRef.doc(player).set(playerData[player], { merge: true })
-                    ));
-                    // Simple success feedback via temporary message
+                    await Promise.all(PLAYERS.map(player => statsRef.doc(player).set(playerData[player], { merge: true })));
                     setErrorMessage("Hero Registry Updated! ✨");
                     setTimeout(() => setErrorMessage(""), 3000);
-                } catch(e) { 
-                    setErrorMessage("Profile Update Failed: " + e.message); 
-                } finally {
-                    setIsProfileSaving(false);
-                }
+                } catch(e) { setErrorMessage("Profile Update Failed: " + e.message); }
+                finally { setIsProfileSaving(false); }
+            };
+
+            const handlePhotoUpload = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                setErrorMessage("Compressing...");
+                const base64 = await compressImage(file);
+                setLogForm({ ...logForm, photoUrl: base64 });
+                setErrorMessage("");
             };
 
             const getWeeklyProgress = (p) => {
                 const weekAgo = Date.now() - 604800000;
                 const weekly = history.filter(q => q.player === p && q.timestamp > weekAgo);
-                const turns = weekly.reduce((a,c) => a + (c.turns || 0), 0);
-                const sides = weekly.reduce((a,c) => a + (c.sideQuestCount || 0), 0);
-                return Math.min(3, turns + Math.floor(sides / 2));
+                return Math.min(3, weekly.reduce((a,c) => a + (c.turns || 0), 0) + Math.floor(weekly.reduce((a,c) => a + (c.sideQuestCount || 0), 0)/2));
             };
 
             const handleSaveQuest = async () => {
@@ -237,9 +254,9 @@
                 const oldTurns = getWeeklyProgress(activePlayer);
 
                 try {
-                    const docPath = db.collection('artifacts').doc(appId).collection('public').doc('data');
-                    await docPath.collection('quests').add({ ...logForm, turns, sideQuestCount: sides, expGained: exp, timestamp: Date.now(), dateString: new Date().toLocaleDateString() });
-                    await docPath.collection('stats').doc(activePlayer).set({ exp: oldExp + exp }, { merge: true });
+                    const path = db.collection('artifacts').doc(appId).collection('public').doc('data');
+                    await path.collection('quests').add({ ...logForm, turns, sideQuestCount: sides, expGained: exp, timestamp: Date.now(), dateString: new Date().toLocaleDateString() });
+                    await path.collection('stats').doc(activePlayer).set({ exp: oldExp + exp }, { merge: true });
                     
                     if (getLevel(oldExp + exp) > getLevel(oldExp)) setCelebration({ type: 'levelUp', data: { player: activePlayer, level: getLevel(oldExp + exp) } });
                     else if (oldTurns < 3 && (oldTurns + turns + Math.floor(sides/2)) >= 3) {
@@ -249,18 +266,18 @@
                     }
                     setActiveTab('dashboard');
                     setLogForm({ player: activePlayer, cardio: [{type:"", time:0}], strength: [{type:"", time:0, exercises:""}], sideQuestList: [{type:""}], battleCry: "", photoUrl: "" });
-                } catch(e) { setErrorMessage("Save Failed: " + e.message); } finally { setIsSaving(false); }
+                } catch(e) { setErrorMessage("Save Failed: " + (e.message.includes('large') ? "Photo too large!" : e.message)); } 
+                finally { setIsSaving(false); }
             };
 
             const handleDeleteQuest = async (quest) => {
-                if (!confirm(`Are you sure? This will remove the record and deduct ${quest.expGained} EXP.`)) return;
+                if (!confirm(`Remove record and deduct ${quest.expGained} EXP?`)) return;
                 try {
-                    const docPath = db.collection('artifacts').doc(appId).collection('public').doc('data');
-                    await docPath.collection('quests').doc(quest.id).delete();
-                    const currentExp = playerData[quest.player]?.exp || 0;
-                    const newExp = Math.max(0, currentExp - (quest.expGained || 0));
-                    await docPath.collection('stats').doc(quest.player).set({ exp: newExp }, { merge: true });
-                } catch (e) { setErrorMessage("Delete Failed: " + e.message); }
+                    const path = db.collection('artifacts').doc(appId).collection('public').doc('data');
+                    await path.collection('quests').doc(quest.id).delete();
+                    const newExp = Math.max(0, (playerData[quest.player]?.exp || 0) - (quest.expGained || 0));
+                    await path.collection('stats').doc(quest.player).set({ exp: newExp }, { merge: true });
+                } catch (e) { setErrorMessage("Delete Failed."); }
             };
 
             const sendCheer = async () => {
@@ -283,14 +300,14 @@
 
                     <header className="p-4 bg-slate-900/80 backdrop-blur-md sticky top-0 z-30 flex justify-between items-center border-b border-white/5">
                         <div className="flex items-center gap-3">
-                            <div className="bg-gradient-to-br from-rose-500 to-orange-500 p-2 rounded-xl shadow-lg shadow-rose-900/40"><Icon name="flame" className="text-white w-5 h-5" /></div>
-                            <div><h1 className="font-black italic uppercase tracking-tighter text-white text-xl leading-none">Fit 2gether</h1><div className="flex items-center gap-1"><Icon name="sparkles" className="w-3 h-3 text-amber-400" /><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none">Season 1</span></div></div>
+                            <div className="bg-gradient-to-br from-rose-500 to-orange-500 p-2 rounded-xl shadow-lg"><Icon name="flame" className="text-white w-5 h-5" /></div>
+                            <div><h1 className="font-black italic uppercase tracking-tighter text-white text-xl leading-none">Fit 2gether</h1><div className="flex items-center gap-1 mt-1"><Icon name="sparkles" className="w-3 h-3 text-amber-400" /><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none">Season 1</span></div></div>
                         </div>
-                        <div className="bg-slate-800/50 px-3 py-1.5 rounded-full border border-white/5 flex items-center gap-2 shadow-lg text-slate-100"><Icon name="heart" className="w-3 h-3 text-rose-500 fill-rose-500" /><span className="text-xs font-black">{Object.values(playerData).reduce((a,b) => a + (b.heartPoints || 0), 0)}</span></div>
+                        <div className="bg-slate-800/50 px-3 py-1.5 rounded-full border border-white/5 flex items-center gap-2 shadow-lg"><Icon name="heart" className="w-3 h-3 text-rose-500 fill-rose-500" /><span className="text-xs font-black">{Object.values(playerData).reduce((a,b) => a + (b.heartPoints || 0), 0)}</span></div>
                     </header>
 
                     <main className="max-w-md mx-auto p-4 space-y-6">
-                        {errorMessage && <div className="bg-emerald-500/20 border border-emerald-500/40 p-4 rounded-3xl text-emerald-300 text-[10px] font-bold uppercase tracking-widest leading-relaxed animate-in slide-in-from-top-2">{errorMessage}</div>}
+                        {errorMessage && <div className="bg-emerald-500/20 border border-emerald-500/40 p-4 rounded-3xl text-emerald-300 text-[10px] font-bold uppercase tracking-widest text-center animate-in slide-in-from-top-2">{errorMessage}</div>}
 
                         {activeTab === 'dashboard' && (
                             <div className="space-y-6 animate-in slide-in-from-left-4">
@@ -311,10 +328,10 @@
                                 </div>
 
                                 <div className="space-y-5">
-                                    <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 px-2 flex items-center gap-2"><Icon name="map" className="w-3 h-3" /> Adventure Stream</h3>
+                                    <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 px-2 flex items-center gap-2"><Icon name="map" className="w-3 h-3" /> Live Adventures</h3>
                                     {history.map(quest => (
                                         <div key={quest.id} className="bg-slate-900 border border-white/5 rounded-[2.5rem] overflow-hidden shadow-2xl relative">
-                                            <div className="p-5 flex items-center justify-between text-slate-200 text-sm">
+                                            <div className="p-5 flex items-center justify-between text-slate-200">
                                                 <div className="flex items-center gap-3">
                                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-black text-xs shadow-inner ${quest.player === 'Max' ? 'bg-sky-600' : 'bg-rose-600'}`}>{quest.player[0]}</div>
                                                     <div><p className="font-black italic uppercase leading-none">{quest.player}</p><p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1 italic">{quest.dateString}</p></div>
@@ -325,7 +342,7 @@
                                                 </div>
                                             </div>
                                             <div className="aspect-[4/3] bg-slate-950 relative overflow-hidden active:opacity-90 transition-all cursor-pointer" onClick={() => setViewingQuest(quest)}>
-                                                {quest.photoUrl ? <img src={quest.photoUrl} className="w-full h-full object-cover" alt="Proof" /> : <div className="w-full h-full flex flex-col items-center justify-center text-slate-800 space-y-2 opacity-20"><Icon name="camera" className="w-12 h-12" /><p className="text-[9px] font-black uppercase tracking-widest">Verified Session</p></div>}
+                                                {quest.photoUrl ? <img src={quest.photoUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full flex flex-col items-center justify-center text-slate-800 space-y-2 opacity-20"><Icon name="camera" className="w-12 h-12" /><p className="text-[9px] font-black uppercase tracking-widest">Verified Session</p></div>}
                                                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-6"><p className="text-sm italic font-medium text-white pr-4 line-clamp-2">"{quest.battleCry || "Quest complete."}"</p></div>
                                             </div>
                                             <div className="p-5 space-y-4">
@@ -334,7 +351,7 @@
                                                 {cheerState.questId === quest.id && (
                                                     <div className="mt-4 p-4 bg-slate-950/50 rounded-3xl border border-white/5 space-y-4 shadow-inner">
                                                         <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-white/5">{PLAYERS.map(p => (<button key={p} onClick={() => setCheerState({...cheerState, sender: p})} className={`flex-1 py-2 rounded-xl text-[9px] font-bold uppercase transition-all ${cheerState.sender === p ? 'bg-white text-slate-900 shadow-lg' : 'text-slate-500'}`}>I am {p}</button>))}</div>
-                                                        <div className="flex gap-2"><input value={cheerState.message} onChange={(e) => setCheerState({...cheerState, message: e.target.value})} placeholder="Type a compliment..." className="flex-1 bg-slate-950 border border-white/10 p-4 rounded-2xl text-sm outline-none focus:border-rose-500 text-white" onKeyDown={(e) => e.key === 'Enter' && sendCheer()}/><button onClick={sendCheer} className="bg-rose-500 p-4 rounded-2xl shadow-xl active:scale-90 transition-transform"><Icon name="send" className="w-4 h-4 text-white" /></button></div>
+                                                        <div className="flex gap-2"><input value={cheerState.message} onChange={(e) => setCheerState({...cheerState, message: e.target.value})} placeholder="Type a compliment..." className="flex-1 bg-slate-950 border border-white/10 p-4 rounded-2xl text-sm outline-none focus:border-rose-500 text-white" /><button onClick={sendCheer} className="bg-rose-500 p-4 rounded-2xl shadow-xl active:scale-90 transition-transform"><Icon name="send" className="w-4 h-4 text-white" /></button></div>
                                                     </div>
                                                 )}
                                             </div>
@@ -346,19 +363,19 @@
 
                         {activeTab === 'log' && (
                             <div className="bg-slate-900 rounded-[2.5rem] p-8 border border-white/5 shadow-2xl space-y-8 animate-in slide-in-from-bottom-5">
-                                <div className="flex justify-between items-center"><div><h2 className="text-2xl font-black italic uppercase text-white tracking-tighter leading-none text-3xl">New Quest</h2><p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-2">Log battle results</p></div><button onClick={() => setActiveTab('dashboard')} className="p-2 bg-slate-800 rounded-full text-slate-400"><Icon name="x" className="w-5 h-5" /></button></div>
-                                <div className="flex bg-slate-800/50 p-2 rounded-[1.8rem] border border-white/5">{PLAYERS.map(n => (<button key={n} onClick={() => setLogForm({...logForm, player: n})} className={`flex-1 py-4 rounded-2xl font-black uppercase italic tracking-widest text-xs transition-all ${logForm.player === n ? 'bg-slate-900 text-white shadow-2xl' : 'text-slate-500'}`}>{n}</button>))}</div>
+                                <div className="flex justify-between items-center"><div><h2 className="text-2xl font-black italic uppercase text-white tracking-tighter leading-none text-3xl">New Quest</h2><p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-2">Log Records</p></div><button onClick={() => setActiveTab('dashboard')} className="p-2 bg-slate-800 rounded-full text-slate-400"><Icon name="x" className="w-5 h-5" /></button></div>
+                                <div className="flex bg-slate-800/50 p-2 rounded-[1.8rem] border border-white/5">{PLAYERS.map(n => (<button key={n} onClick={() => setLogForm({...logForm, player: n})} className={`flex-1 py-4 rounded-2xl font-black uppercase italic tracking-widest text-xs transition-all ${logForm.player === n ? 'bg-slate-900 text-white shadow-2xl border border-white/10' : 'text-slate-500'}`}>{n}</button>))}</div>
                                 <div className="space-y-6">
-                                    <div className="space-y-3"><label className="text-[10px] font-black uppercase text-amber-500 flex items-center gap-2 italic tracking-widest"><Icon name="camera" className="w-3 h-3" /> Proof (인증샷)</label>
-                                    <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed rounded-[2.5rem] cursor-pointer bg-slate-950 border-white/10 relative overflow-hidden shadow-inner">{logForm.photoUrl ? <img src={logForm.photoUrl} className="w-full h-full object-cover" alt="Proof" /> : <div className="text-center text-slate-600 opacity-30"><Icon name="image" className="w-10 h-10 mb-3 mx-auto" /><p className="text-[10px] font-black uppercase tracking-widest">Select Photo</p></div>}<input type="file" accept="image/*" className="hidden" onChange={(e) => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onloadend=()=>setLogForm({...logForm, photoUrl: r.result}); r.readAsDataURL(f); }} /></label></div>
+                                    <div className="space-y-3"><label className="text-[10px] font-black uppercase text-amber-500 flex items-center gap-2 italic tracking-widest"><Icon name="camera" className="w-3 h-3" /> 인증샷 (Proof)</label>
+                                    <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed rounded-[2.5rem] cursor-pointer bg-slate-950 border-white/10 relative overflow-hidden shadow-inner">{logForm.photoUrl ? <img src={logForm.photoUrl} className="w-full h-full object-cover" /> : <div className="text-center text-slate-600 opacity-30"><Icon name="image" className="w-10 h-10 mb-3 mx-auto" /><p className="text-[10px] font-black uppercase tracking-widest">Select Photo</p></div>}<input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} /></label></div>
                                     <div className="space-y-3"><label className="text-[10px] font-black uppercase text-indigo-400 flex items-center gap-2 italic tracking-widest"><Icon name="scroll" className="w-3 h-3" /> Battle Cry (Mood)</label><input placeholder="Feeling unstoppable! 💪🔥" className="w-full bg-slate-950 border border-white/10 p-4 rounded-2xl text-sm outline-none text-white shadow-inner focus:border-indigo-500/50" value={logForm.battleCry} onChange={e => setLogForm({...logForm, battleCry: e.target.value})} /></div>
-                                    <div className="space-y-6 text-slate-100">
+                                    <div className="space-y-6">
                                         <div className="space-y-4"><div className="flex justify-between items-center px-1 pt-2"><label className="text-[10px] font-black uppercase text-rose-500 flex items-center gap-2 italic tracking-widest"><Icon name="activity" className="w-3 h-3" /> Cardio</label><button onClick={() => setLogForm({...logForm, cardio: [...logForm.cardio, {type:"", time:0}]})} className="bg-rose-500 p-1 rounded-lg text-white shadow-lg"><Icon name="plus-circle" className="w-5 h-5" /></button></div>
                                         {logForm.cardio.map((c, i) => (<div key={i} className="flex gap-3 items-center"><input placeholder="e.g. Running" className="flex-1 bg-slate-950 border border-white/10 p-4 rounded-2xl text-sm text-white shadow-inner" value={c.type} onChange={e=>{const nl=[...logForm.cardio]; nl[i].type=e.target.value; setLogForm({...logForm, cardio: nl})}} /><input type="number" placeholder="Mins" className="w-20 bg-slate-950 border border-white/10 p-4 rounded-2xl text-sm text-center text-white shadow-inner" value={c.time||""} onChange={e=>{const nl=[...logForm.cardio]; nl[i].time=e.target.value; setLogForm({...logForm, cardio: nl})}} /></div>))}</div>
                                         <div className="space-y-4"><div className="flex justify-between items-center px-1 pt-2"><label className="text-[10px] font-black uppercase text-blue-500 flex items-center gap-2 italic tracking-widest"><Icon name="swords" className="w-3 h-3" /> Strength</label><button onClick={() => setLogForm({...logForm, strength: [...logForm.strength, {type:"", time:0, exercises:""}]})} className="bg-blue-500 p-1 rounded-lg text-white shadow-lg"><Icon name="plus-circle" className="w-5 h-5" /></button></div>
-                                        {logForm.strength.map((s, i) => (<div key={i} className="bg-slate-950 border border-white/10 p-6 rounded-[2.5rem] space-y-4 shadow-inner relative">
+                                        {logForm.strength.map((s, i) => (<div key={i} className="bg-slate-950 border border-white/10 p-6 rounded-[2.5rem] space-y-4 shadow-inner relative text-slate-200">
                                             {logForm.strength.length > 1 && (<button onClick={() => {const nl=[...logForm.strength]; nl.splice(i, 1); setLogForm({...logForm, strength: nl})}} className="absolute top-5 right-5 text-slate-700 hover:text-rose-500"><Icon name="trash-2" className="w-5 h-5" /></button>)}
-                                            <div className="flex gap-4"><input placeholder="Focus: e.g. Legs" className="flex-1 bg-slate-900/50 p-4 rounded-2xl text-xs text-white font-bold" value={s.type} onChange={e=>{const nl=[...logForm.strength]; nl[i].type=e.target.value; setLogForm({...logForm, strength: nl})}} /><input type="number" placeholder="Mins" className="w-20 bg-slate-900/50 p-4 rounded-2xl text-xs text-center font-bold text-white shadow-sm" value={s.time||""} onChange={e=>{const nl=[...logForm.strength]; nl[i].time=e.target.value; setLogForm({...logForm, strength: nl})}} /></div>
+                                            <div className="flex gap-4"><input placeholder="Focus: Legs" className="flex-1 bg-slate-900/50 p-4 rounded-2xl text-xs text-white font-bold" value={s.type} onChange={e=>{const nl=[...logForm.strength]; nl[i].type=e.target.value; setLogForm({...logForm, strength: nl})}} /><input type="number" placeholder="Mins" className="w-20 bg-slate-900/50 p-4 rounded-2xl text-xs text-center font-bold text-white shadow-sm" value={s.time||""} onChange={e=>{const nl=[...logForm.strength]; nl[i].time=e.target.value; setLogForm({...logForm, strength: nl})}} /></div>
                                             <textarea placeholder="e.g. Bench 3x10..." className="w-full bg-slate-900/50 p-4 rounded-2xl text-[11px] h-24 outline-none text-slate-300 shadow-inner placeholder:text-slate-800/50" value={s.exercises} onChange={e=>{const nl=[...logForm.strength]; nl[i].exercises=e.target.value; setLogForm({...logForm, strength: nl})}} />
                                         </div>))}</div>
                                     </div>
@@ -377,7 +394,7 @@
                                     <div className="grid grid-cols-2 gap-4">
                                         {PLAYERS.map(n => (<div key={n} className="bg-slate-950/50 p-6 rounded-[2rem] border border-white/5 text-center shadow-inner"><p className="text-[10px] font-black uppercase text-slate-500 mb-1 tracking-widest">Rank {getLevel(playerData[n]?.exp)}</p><p className="text-3xl font-black italic text-white leading-none tracking-tighter">{playerData[n]?.exp || 0}</p><p className="text-[8px] font-bold text-amber-500/60 uppercase mt-2 tracking-widest italic leading-none">Total EXP</p></div>))}
                                     </div>
-                                    <div className="pt-8 border-t border-white/5 space-y-8 text-center">
+                                    <div className="pt-8 border-t border-white/5 space-y-8 text-center text-slate-100">
                                         <div className="flex items-center justify-between px-2 text-slate-500"><h4 className="text-[10px] font-black uppercase flex items-center gap-1.5 italic tracking-widest leading-none"><Icon name="bar-chart-3" className="w-3 h-3" /> Training Goal</h4></div>
                                         <div className="flex gap-4">
                                             {PLAYERS.map(p => (
@@ -397,7 +414,7 @@
                             <div className="space-y-4 animate-in slide-in-from-right-4">
                                 <h2 className="text-2xl font-black italic uppercase text-white tracking-tight px-2">Hero Hub</h2>
                                 <div className="bg-slate-900 rounded-[2.5rem] p-6 border border-white/5 space-y-6 shadow-2xl">
-                                    <div className="space-y-4">
+                                    <div className="space-y-4 text-slate-100">
                                         {PLAYERS.map(n => (
                                             <div key={n} className="space-y-3 p-5 bg-slate-950 rounded-[2rem] border border-white/5 shadow-inner">
                                                 <div className="flex items-center justify-between">
@@ -415,18 +432,14 @@
                                             </div>
                                         ))}
                                     </div>
-                                    <button 
-                                        onClick={handleSaveProfile} 
-                                        disabled={isProfileSaving}
-                                        className={`w-full bg-indigo-600 hover:bg-indigo-500 text-white py-4 rounded-2xl font-black italic uppercase tracking-widest text-xs flex items-center justify-center gap-3 transition-all active:scale-95 shadow-xl shadow-indigo-900/20 ${isProfileSaving ? 'opacity-50' : ''}`}
-                                    >
+                                    <button onClick={handleSaveProfile} disabled={isProfileSaving} className={`w-full bg-indigo-600 hover:bg-indigo-500 text-white py-4 rounded-2xl font-black italic uppercase tracking-widest text-xs flex items-center justify-center gap-3 transition-all active:scale-95 shadow-xl shadow-indigo-900/20 ${isProfileSaving ? 'opacity-50' : ''}`}>
                                         {isProfileSaving ? <Icon name="loader" className="w-4 h-4 animate-spin-fast" /> : <Icon name="save" className="w-4 h-4" />}
-                                        {isProfileSaving ? 'Saving Stats...' : 'Save Hero Stats'}
+                                        {isProfileSaving ? 'Updating Registry...' : 'Save Hero Stats'}
                                     </button>
                                 </div>
-                                <div className="bg-gradient-to-br from-indigo-950/40 to-slate-900 border border-indigo-500/20 p-5 rounded-[2rem] shadow-xl space-y-3 text-center">
-                                    <h3 className="text-[10px] font-black uppercase text-white tracking-widest leading-none">Spirit Link Guide</h3>
-                                    <p className="text-[9px] text-slate-500 leading-tight">Host this code on GitHub, then open in Safari/Chrome and tap <b>'Add to Home Screen'</b> to create your app shortcut!</p>
+                                <div className="bg-gradient-to-br from-indigo-950/40 to-slate-900 border border-indigo-500/20 p-5 rounded-[2rem] shadow-xl space-y-2 text-center">
+                                    <h3 className="text-xs font-black uppercase text-white tracking-tight leading-none">Spirit Link Guide</h3>
+                                    <p className="text-[9px] text-slate-500 leading-tight">Safari (iOS) or Chrome (Android) > <b>'Add to Home Screen'</b> for the full experience!</p>
                                 </div>
                             </div>
                         )}
