@@ -19,8 +19,6 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <!-- Firebase Compat SDKs -->
@@ -43,49 +41,31 @@
         .animate-bounce-short { animation: bounce-short 2s infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .animate-spin-fast { animation: spin 1s linear infinite; }
+        #root:empty { display: flex; align-items: center; justify-center: center; height: 100vh; background: #0f172a; }
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="root">
+        <div class="flex flex-col items-center justify-center w-full h-screen space-y-4">
+            <div class="w-12 h-12 border-4 border-rose-500 border-t-transparent rounded-full animate-spin"></div>
+            <p class="text-xs font-black uppercase tracking-widest text-slate-500 text-center px-6 italic">Awakening Heroes...</p>
+        </div>
+    </div>
 
     <script type="text/babel">
-        // --- ICON COMPONENT ---
-        const Icon = ({ name, className = "w-5 h-5" }) => {
-            React.useEffect(() => {
-                if (window.lucide) window.lucide.createIcons();
-            }, [name]);
-            return <i data-lucide={name} className={className}></i>;
-        };
-
-        const { useState, useEffect, useMemo } = React;
-
-        // --- FIREBASE INITIALIZATION ---
-        const myKeys = {
-            apiKey: "AIzaSyD4jzxDM14_Db70ZTLO3c4CIp9UU_CZGvs",
-            authDomain: "fit-2gether.firebaseapp.com",
-            projectId: "fit-2gether",
-            storageBucket: "fit-2gether.firebasestorage.app",
-            messagingSenderId: "601749541750",
-            appId: "1:601749541750:web:0e8302ab760f9e33512057",
-            measurementId: "G-PDSBGMTFDN"
-        };
-
-        const firebaseConfig = (typeof __firebase_config !== 'undefined' && __firebase_config) 
-            ? JSON.parse(__firebase_config) 
-            : myKeys;
-
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-        const auth = firebase.auth();
-        const db = firebase.firestore();
-        const appId = 'fit-2gether-prod';
-
-        const GOAL_TURNS = 3;
+        // --- CONSTANTS & HELPERS ---
+        const GOAL_ADVENTURES = 3;
         const PLAYERS = ["Max", "Ashley"];
         const getLevel = (exp) => Math.floor((exp || 0) / 1000) + 1;
 
-        // Aggressive compression to keep things under 1MB Firestore limit
+        const REWARDS_TIERS = [
+            { level: 2, title: "Coffee Treat", icon: "coffee", desc: "Partner buys your next coffee!", color: "bg-orange-500" },
+            { level: 5, title: "Dessert Date", icon: "ice-cream", desc: "Unlock a sweet dessert night.", color: "bg-pink-500" },
+            { level: 8, title: "Dinner Treat", icon: "utensils", desc: "Partner picks up the dinner bill!", color: "bg-indigo-500" },
+            { level: 10, title: "Ultimate Wish", icon: "sparkles", desc: "Your partner must grant one wish.", color: "bg-amber-500" }
+        ];
+
+        // Aggressive compression for direct Firestore storage
         const compressImage = (file, maxWidth = 500, quality = 0.5) => {
             return new Promise((resolve) => {
                 const reader = new FileReader();
@@ -106,25 +86,61 @@
             });
         };
 
-        // --- SUB-COMPONENTS ---
+        // --- FIREBASE INITIALIZATION (OUTSIDE COMPONENT) ---
+        const myKeys = {
+            apiKey: "AIzaSyD4jzxDM14_Db70ZTLO3c4CIp9UU_CZGvs",
+            authDomain: "fit-2gether.firebaseapp.com",
+            projectId: "fit-2gether",
+            storageBucket: "fit-2gether.firebasestorage.app",
+            messagingSenderId: "601749541750",
+            appId: "1:601749541750:web:0e8302ab760f9e33512057",
+            measurementId: "G-PDSBGMTFDN"
+        };
+
+        const firebaseConfig = (typeof __firebase_config !== 'undefined' && __firebase_config) 
+            ? JSON.parse(__firebase_config) 
+            : myKeys;
+
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        const appId = 'fit-2gether-prod'; 
+
+        // --- ICON COMPONENT ---
+        const Icon = ({ name, className = "w-5 h-5" }) => {
+            React.useEffect(() => {
+                const timer = setTimeout(() => {
+                    if (window.lucide) window.lucide.createIcons();
+                }, 50);
+                return () => clearTimeout(timer);
+            }, [name]);
+            return <i data-lucide={name} className={className}></i>;
+        };
+
+        const { useState, useEffect, useMemo } = React;
+
+        // --- MODAL COMPONENTS ---
         const CelebrationModal = ({ type, data, onClose }) => {
             if (!type) return null;
             const content = {
                 levelUp: { title: "Level Up!", subtitle: `${data?.player} reached Rank ${data?.level}!`, icon: "star", color: "text-amber-400", bg: "from-amber-500 to-orange-600" },
-                goalReached: { title: "Goal Clear!", subtitle: `${data?.player} reached 3/3 turns!`, icon: "trophy", color: "text-white", bg: "from-emerald-500 to-teal-600" },
-                guildClear: { title: "Guild Victory!", subtitle: "Team Cleared! Both at 3/3 turns!", icon: "sparkles", color: "text-yellow-200", bg: "from-rose-600 to-indigo-700" }
+                goalReached: { title: "Goal Clear!", subtitle: `${data?.player} completed 3 adventures!`, icon: "trophy", color: "text-white", bg: "from-emerald-500 to-teal-600" },
+                guildClear: { title: "Guild Victory!", subtitle: "Both heroes at 3/3!", icon: "sparkles", color: "text-yellow-200", bg: "from-rose-600 to-indigo-700" }
             };
             const active = content[type];
             return (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md">
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md animate-in fade-in">
                     <div className={`bg-gradient-to-br ${active.bg} p-1 rounded-[3rem] shadow-2xl w-full max-w-xs animate-bounce-short`}>
                         <div className="bg-slate-900 rounded-[2.8rem] p-8 text-center space-y-6">
                             <div className="flex justify-center"><Icon name={active.icon} className={`w-16 h-16 ${active.color}`} /></div>
                             <div className="space-y-2">
-                                <h2 className="text-2xl font-black italic uppercase text-white leading-none">{active.title}</h2>
+                                <h2 className="text-2xl font-black italic uppercase text-white leading-tight">{active.title}</h2>
                                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{active.subtitle}</p>
                             </div>
-                            <button onClick={onClose} className="w-full bg-white text-slate-900 py-4 rounded-2xl font-black uppercase italic">Continue Quest</button>
+                            <button onClick={onClose} className="w-full bg-white text-slate-900 py-4 rounded-2xl font-black uppercase italic shadow-xl">Continue Quest</button>
                         </div>
                     </div>
                 </div>
@@ -134,7 +150,7 @@
         const QuestDetailModal = ({ quest, onClose }) => {
             if (!quest) return null;
             return (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-xl">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-xl animate-in fade-in">
                     <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] w-full max-w-sm overflow-hidden shadow-2xl text-slate-100">
                         <div className="p-6 bg-slate-800/50 flex justify-between items-center border-b border-white/5">
                             <div className="flex items-center gap-3">
@@ -144,19 +160,24 @@
                             <button onClick={onClose} className="p-2 bg-slate-700 rounded-full text-slate-300"><Icon name="x" className="w-4 h-4" /></button>
                         </div>
                         <div className="p-6 space-y-6 max-h-[60vh] overflow-y-auto custom-scrollbar text-slate-200">
-                            <div className="flex justify-around bg-slate-950 p-5 rounded-3xl border border-white/5">
-                                <div className="text-center"><p className="text-[8px] font-black text-slate-500 uppercase">Turns</p><p className="text-xl font-black text-white italic">{quest.turns}</p></div>
-                                <div className="w-px bg-white/5" /><div className="text-center"><p className="text-[8px] font-black text-slate-500 uppercase">Sides</p><p className="text-xl font-black text-white italic">{quest.sideQuestCount || 0}</p></div>
-                                <div className="w-px bg-white/5" /><div className="text-center"><p className="text-[8px] font-black text-slate-500 uppercase">EXP</p><p className="text-xl font-black text-amber-400 italic">+{quest.expGained}</p></div>
+                            <div className="flex justify-around bg-slate-950 p-5 rounded-3xl border border-white/5 shadow-inner">
+                                <div className="text-center"><p className="text-[8px] font-black text-slate-500 uppercase italic">Adventures</p><p className="text-xl font-black text-white italic">1</p></div>
+                                <div className="w-px bg-white/5" /><div className="text-center"><p className="text-[8px] font-black text-slate-500 uppercase italic">EXP Gained</p><p className="text-xl font-black text-amber-400 italic">+{quest.expGained}</p></div>
                             </div>
                             <div className="space-y-4">
                                 {quest.cardio?.filter(c => c.time > 0).map((c, i) => (
-                                    <div key={i} className="flex justify-between bg-slate-950/80 p-4 rounded-2xl border border-white/5"><span className="text-sm font-bold">{c.type}</span><span className="text-sm font-black text-rose-400">{c.time}m</span></div>
+                                    <div key={i} className="flex justify-between bg-slate-950/80 p-4 rounded-2xl border border-white/5 shadow-sm text-sm font-bold">
+                                        <span className="flex items-center gap-2 font-black italic"><Icon name="activity" className="w-3 h-3 text-rose-500" /> {c.type}</span>
+                                        <span className="text-rose-400">{c.time}m</span>
+                                    </div>
                                 ))}
                                 {quest.strength?.filter(s => s.time > 0).map((s, i) => (
-                                    <div key={i} className="bg-slate-950/80 p-5 rounded-2xl border border-white/5 space-y-2">
-                                        <div className="flex justify-between border-b border-white/5 pb-1"><span className="text-sm font-bold">{s.type}</span><span className="text-sm font-black text-sky-400">{s.time}m</span></div>
-                                        <p className="text-[11px] text-slate-400 italic whitespace-pre-wrap">{s.exercises}</p>
+                                    <div key={i} className="bg-slate-950/80 p-5 rounded-2xl border border-white/5 space-y-2 shadow-sm">
+                                        <div className="flex justify-between border-b border-white/5 pb-1 text-sm font-bold">
+                                            <span className="flex items-center gap-2 font-black italic"><Icon name="swords" className="w-3 h-3 text-sky-500" /> {s.type}</span>
+                                            <span className="text-sky-400">{s.time}m</span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-400 italic whitespace-pre-wrap leading-relaxed">{s.exercises}</p>
                                     </div>
                                 ))}
                             </div>
@@ -167,6 +188,7 @@
             );
         };
 
+        // --- MAIN APP COMPONENT ---
         const App = () => {
             const [user, setUser] = useState(null);
             const [activeTab, setActiveTab] = useState('dashboard');
@@ -177,13 +199,15 @@
             const [isSaving, setIsSaving] = useState(false);
             const [isProfileSaving, setIsProfileSaving] = useState(false);
             const [errorMessage, setErrorMessage] = useState("");
-
+            const [currentHero, setCurrentHero] = useState("Max");
+            const [showHeroSwitcher, setShowHeroSwitcher] = useState(false);
             const [playerData, setPlayerData] = useState({
-                Max: { exp: 0, height: 180, age: 28, weight: 80, heartPoints: 0 },
-                Ashley: { exp: 0, height: 165, age: 25, weight: 65, heartPoints: 0 }
+                Max: { exp: 0, height: 180, age: 28, weight: 80, heartPoints: 0, redeemed: [] },
+                Ashley: { exp: 0, height: 165, age: 25, weight: 65, heartPoints: 0, redeemed: [] }
             });
             const [logForm, setLogForm] = useState({ player: "Max", cardio: [{ type: "", time: 0 }], strength: [{ type: "", time: 0, exercises: "" }], sideQuestList: [{ type: "" }], battleCry: "", photoUrl: "" });
 
+            // Initialize Auth
             useEffect(() => {
                 const initAuth = async () => {
                     try {
@@ -192,20 +216,33 @@
                         } else {
                             await auth.signInAnonymously();
                         }
-                    } catch (e) { setErrorMessage("Auth Failed. Check sign-in method in Firebase."); }
+                    } catch (e) { 
+                        setErrorMessage("AUTH FAIL: Ensure Anonymous Sign-In is enabled in Firebase."); 
+                    }
                 };
                 initAuth();
-                return auth.onAuthStateChanged(setUser);
+                const unsubscribe = auth.onAuthStateChanged((u) => setUser(u));
+                return () => unsubscribe();
             }, []);
 
+            // Listen to Firestore
             useEffect(() => {
                 if (!user) return;
                 const path = db.collection('artifacts').doc(appId).collection('public').doc('data');
-                const unsubQuests = path.collection('quests').onSnapshot(snap => setHistory(snap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => b.timestamp - a.timestamp)));
+                
+                const unsubQuests = path.collection('quests').onSnapshot(snap => {
+                    setHistory(snap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => b.timestamp - a.timestamp));
+                    setErrorMessage("");
+                }, (err) => {
+                    console.error("Firestore Error:", err);
+                    setErrorMessage("History Sync Error: Check Firestore Rules Step 3.");
+                });
+
                 const unsubStats = path.collection('stats').onSnapshot(snap => {
                     const stats = {}; snap.forEach(d => { stats[d.id] = d.data(); });
                     if (Object.keys(stats).length > 0) setPlayerData(prev => ({...prev, ...stats}));
-                });
+                }, (err) => setErrorMessage("Stats Sync Error"));
+
                 return () => { unsubQuests(); unsubStats(); };
             }, [user]);
 
@@ -221,57 +258,61 @@
                     await Promise.all(PLAYERS.map(player => statsRef.doc(player).set(playerData[player], { merge: true })));
                     setErrorMessage("Hero Registry Updated! ✨");
                     setTimeout(() => setErrorMessage(""), 3000);
-                } catch(e) { setErrorMessage("Profile Update Failed: " + e.message); }
+                } catch(e) { setErrorMessage("Update Failed: " + e.message); }
                 finally { setIsProfileSaving(false); }
             };
 
             const handlePhotoUpload = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                setErrorMessage("Compressing...");
+                setErrorMessage("Optimizing photo...");
                 const base64 = await compressImage(file);
-                setLogForm({ ...logForm, photoUrl: base64 });
+                setLogForm({ ...logForm, photoUrl: base64, player: currentHero });
                 setErrorMessage("");
             };
 
             const getWeeklyProgress = (p) => {
                 const weekAgo = Date.now() - 604800000;
-                const weekly = history.filter(q => q.player === p && q.timestamp > weekAgo);
-                return Math.min(3, weekly.reduce((a,c) => a + (c.turns || 0), 0) + Math.floor(weekly.reduce((a,c) => a + (c.sideQuestCount || 0), 0)/2));
+                const weekly = history.filter(q => q.player === p && q.timestamp > weekAgo && !q.isReward);
+                return Math.min(GOAL_ADVENTURES, weekly.length);
             };
 
             const handleSaveQuest = async () => {
-                if (!user) { setErrorMessage("Still connecting..."); return; }
+                if (!user) { setErrorMessage("Connecting..."); return; }
                 setIsSaving(true);
                 setErrorMessage("");
-                const activePlayer = logForm.player;
+                const activePlayer = currentHero;
                 const cardioTime = logForm.cardio.reduce((a,c) => a + (parseInt(c.time) || 0), 0);
                 const strengthTime = logForm.strength.reduce((a,c) => a + (parseInt(c.time) || 0), 0);
-                let turns = Math.floor(cardioTime / 30) + Math.floor(strengthTime / 30);
-                let sides = logForm.sideQuestList.filter(s => s.type !== "").length + (cardioTime > 0 && cardioTime % 30 !== 0 ? 1 : 0);
-                const exp = (turns * 100) + (sides * 40);
+                
+                // Logic: Time determines EXP, each entry = 1 consistency point.
+                let rawTurnsForExp = Math.floor(cardioTime / 30) + Math.floor(strengthTime / 30);
+                let sidesForExp = logForm.sideQuestList.filter(s => s.type !== "").length + (cardioTime > 0 && cardioTime % 30 !== 0 ? 1 : 0);
+                const exp = (Math.max(1, rawTurnsForExp) * 100) + (sidesForExp * 40);
+                
                 const oldExp = playerData[activePlayer]?.exp || 0;
-                const oldTurns = getWeeklyProgress(activePlayer);
+                const oldCount = getWeeklyProgress(activePlayer);
 
                 try {
                     const path = db.collection('artifacts').doc(appId).collection('public').doc('data');
-                    await path.collection('quests').add({ ...logForm, turns, sideQuestCount: sides, expGained: exp, timestamp: Date.now(), dateString: new Date().toLocaleDateString() });
+                    await path.collection('quests').add({ ...logForm, player: activePlayer, expGained: exp, timestamp: Date.now(), dateString: new Date().toLocaleDateString() });
                     await path.collection('stats').doc(activePlayer).set({ exp: oldExp + exp }, { merge: true });
                     
-                    if (getLevel(oldExp + exp) > getLevel(oldExp)) setCelebration({ type: 'levelUp', data: { player: activePlayer, level: getLevel(oldExp + exp) } });
-                    else if (oldTurns < 3 && (oldTurns + turns + Math.floor(sides/2)) >= 3) {
+                    if (getLevel(oldExp + exp) > getLevel(oldExp)) {
+                        setCelebration({ type: 'levelUp', data: { player: activePlayer, level: getLevel(oldExp + exp) } });
+                    } else if (oldCount < GOAL_ADVENTURES && (oldCount + 1) >= GOAL_ADVENTURES) {
                         const partner = PLAYERS.find(p => p !== activePlayer);
-                        if (getWeeklyProgress(partner) >= 3) setCelebration({ type: 'guildClear', data: {} });
+                        if (getWeeklyProgress(partner) >= GOAL_ADVENTURES) setCelebration({ type: 'guildClear', data: {} });
                         else setCelebration({ type: 'goalReached', data: { player: activePlayer } });
                     }
                     setActiveTab('dashboard');
                     setLogForm({ player: activePlayer, cardio: [{type:"", time:0}], strength: [{type:"", time:0, exercises:""}], sideQuestList: [{type:""}], battleCry: "", photoUrl: "" });
-                } catch(e) { setErrorMessage("Save Failed: " + (e.message.includes('large') ? "Photo too large!" : e.message)); } 
+                } catch(e) { setErrorMessage("Save Failed: Photo might be too big."); } 
                 finally { setIsSaving(false); }
             };
 
             const handleDeleteQuest = async (quest) => {
-                if (!confirm(`Remove record and deduct ${quest.expGained} EXP?`)) return;
+                if (!confirm(`Delete record and deduct ${quest.expGained} EXP?`)) return;
                 try {
                     const path = db.collection('artifacts').doc(appId).collection('public').doc('data');
                     await path.collection('quests').doc(quest.id).delete();
@@ -280,14 +321,33 @@
                 } catch (e) { setErrorMessage("Delete Failed."); }
             };
 
+            const claimReward = async (tier) => {
+                const redeemed = playerData[currentHero]?.redeemed || [];
+                if (redeemed.includes(tier.level)) return;
+                try {
+                    const path = db.collection('artifacts').doc(appId).collection('public').doc('data');
+                    await path.collection('stats').doc(currentHero).set({ redeemed: [...redeemed, tier.level] }, { merge: true });
+                    await path.collection('quests').add({
+                        player: currentHero,
+                        battleCry: `Redeemed Reward: ${tier.title}! 🎁`,
+                        expGained: 0,
+                        timestamp: Date.now(),
+                        dateString: new Date().toLocaleDateString(),
+                        isReward: true
+                    });
+                    setErrorMessage("Reward Claimed! ✨");
+                    setTimeout(() => setErrorMessage(""), 3000);
+                } catch (e) { setErrorMessage("Claim Failed."); }
+            };
+
             const sendCheer = async () => {
                 if (!cheerState.message.trim()) return;
                 try {
                     await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('quests').doc(cheerState.questId).update({
-                        comments: firebase.firestore.FieldValue.arrayUnion({ from: cheerState.sender, text: cheerState.message, timestamp: Date.now() })
+                        comments: firebase.firestore.FieldValue.arrayUnion({ from: currentHero, text: cheerState.message, timestamp: Date.now() })
                     });
-                    await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('stats').doc(cheerState.sender).set({
-                        heartPoints: (playerData[cheerState.sender]?.heartPoints || 0) + 10
+                    await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('stats').doc(currentHero).set({
+                        heartPoints: (playerData[currentHero]?.heartPoints || 0) + 10
                     }, { merge: true });
                     setCheerState({ ...cheerState, questId: null, message: "" });
                 } catch(e) { setErrorMessage("Cheer failed."); }
@@ -303,11 +363,25 @@
                             <div className="bg-gradient-to-br from-rose-500 to-orange-500 p-2 rounded-xl shadow-lg"><Icon name="flame" className="text-white w-5 h-5" /></div>
                             <div><h1 className="font-black italic uppercase tracking-tighter text-white text-xl leading-none">Fit 2gether</h1><div className="flex items-center gap-1 mt-1"><Icon name="sparkles" className="w-3 h-3 text-amber-400" /><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none">Season 1</span></div></div>
                         </div>
-                        <div className="bg-slate-800/50 px-3 py-1.5 rounded-full border border-white/5 flex items-center gap-2 shadow-lg"><Icon name="heart" className="w-3 h-3 text-rose-500 fill-rose-500" /><span className="text-xs font-black">{Object.values(playerData).reduce((a,b) => a + (b.heartPoints || 0), 0)}</span></div>
+                        
+                        <div className="relative">
+                            <button onClick={() => setShowHeroSwitcher(!showHeroSwitcher)} className="bg-slate-800 px-4 py-2 rounded-2xl border border-white/10 flex items-center gap-2 shadow-lg active:scale-95 transition-all">
+                                <div className={`w-2 h-2 rounded-full ${currentHero === 'Max' ? 'bg-sky-500 shadow-[0_0_8px_#0ea5e9]' : 'bg-rose-500 shadow-[0_0_8px_#f43f5e]'}`} />
+                                <span className="text-xs font-black uppercase italic tracking-widest leading-none">{currentHero}</span>
+                                <Icon name="chevron-down" className="w-3 h-3 text-slate-500" />
+                            </button>
+                            {showHeroSwitcher && (
+                                <div className="absolute right-0 mt-2 w-32 bg-slate-800 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50 animate-in slide-in-from-top-2">
+                                    {PLAYERS.map(p => (
+                                        <button key={p} onClick={() => { setCurrentHero(p); setShowHeroSwitcher(false); }} className="w-full p-4 text-left text-[10px] font-black uppercase tracking-widest hover:bg-white/5 border-b border-white/5 last:border-0">{p}</button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </header>
 
                     <main className="max-w-md mx-auto p-4 space-y-6">
-                        {errorMessage && <div className="bg-emerald-500/20 border border-emerald-500/40 p-4 rounded-3xl text-emerald-300 text-[10px] font-bold uppercase tracking-widest text-center animate-in slide-in-from-top-2">{errorMessage}</div>}
+                        {errorMessage && <div className="bg-emerald-500/20 border border-emerald-500/40 p-4 rounded-3xl text-emerald-300 text-[10px] font-bold uppercase tracking-widest text-center animate-in slide-in-from-top-2 leading-relaxed">{errorMessage}</div>}
 
                         {activeTab === 'dashboard' && (
                             <div className="space-y-6 animate-in slide-in-from-left-4">
@@ -316,11 +390,11 @@
                                         <div key={name} className="bg-slate-900 border border-white/5 p-4 rounded-[2rem] relative overflow-hidden shadow-xl">
                                             <div className={`absolute inset-0 opacity-10 bg-gradient-to-br ${name === 'Max' ? 'from-sky-500' : 'from-rose-500'} to-transparent`} />
                                             <div className="relative z-10 space-y-3">
-                                                <div className="flex justify-between items-center"><span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border border-white/10">Rank {getLevel(playerData[name]?.exp)}</span><Icon name={name === 'Max' ? 'shield' : 'swords'} className={`w-4 h-4 ${name === 'Max' ? 'text-sky-500' : 'text-rose-500'}`} /></div>
+                                                <div className="flex justify-between items-center"><span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border border-white/10 italic">Rank {getLevel(playerData[name]?.exp)}</span><Icon name={name === 'Max' ? 'shield' : 'swords'} className={`w-4 h-4 ${name === 'Max' ? 'text-sky-500' : 'text-rose-500'}`} /></div>
                                                 <h2 className="text-lg font-black italic uppercase truncate">{name}</h2>
                                                 <div className="space-y-1">
-                                                    <div className="flex justify-between text-[10px] font-bold uppercase text-slate-500"><span>Progress</span><span>{getWeeklyProgress(name)}/3</span></div>
-                                                    <div className="h-2 bg-white/5 rounded-full overflow-hidden shadow-inner"><div className={`h-full transition-all duration-1000 ${name === 'Max' ? 'bg-sky-500' : 'bg-rose-500'}`} style={{ width: `${(getWeeklyProgress(name)/3)*100}%` }} /></div>
+                                                    <div className="flex justify-between text-[10px] font-bold uppercase text-slate-500"><span>Progress</span><span>{getWeeklyProgress(name)}/{GOAL_ADVENTURES}</span></div>
+                                                    <div className="h-2 bg-white/5 rounded-full overflow-hidden shadow-inner"><div className={`h-full transition-all duration-1000 ${name === 'Max' ? 'bg-sky-500' : 'bg-rose-500'}`} style={{ width: `${(getWeeklyProgress(name)/GOAL_ADVENTURES)*100}%` }} /></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -328,60 +402,91 @@
                                 </div>
 
                                 <div className="space-y-5">
-                                    <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 px-2 flex items-center gap-2"><Icon name="map" className="w-3 h-3" /> Live Adventures</h3>
+                                    <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 px-2 flex items-center gap-2 italic leading-none"><Icon name="map" className="w-3 h-3" /> Live Adventures</h3>
                                     {history.map(quest => (
-                                        <div key={quest.id} className="bg-slate-900 border border-white/5 rounded-[2.5rem] overflow-hidden shadow-2xl relative">
+                                        <div key={quest.id} className={`bg-slate-900 border border-white/5 rounded-[2.5rem] overflow-hidden shadow-2xl relative ${quest.isReward ? 'ring-2 ring-amber-500/50' : ''}`}>
                                             <div className="p-5 flex items-center justify-between text-slate-200">
                                                 <div className="flex items-center gap-3">
                                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-black text-xs shadow-inner ${quest.player === 'Max' ? 'bg-sky-600' : 'bg-rose-600'}`}>{quest.player[0]}</div>
-                                                    <div><p className="font-black italic uppercase leading-none">{quest.player}</p><p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1 italic">{quest.dateString}</p></div>
+                                                    <div><p className="font-black italic uppercase leading-none">{quest.player}</p><p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1 italic leading-none">{quest.dateString}</p></div>
                                                 </div>
                                                 <div className="flex items-center gap-2">
-                                                    <div className="bg-amber-500/10 px-3 py-1.5 rounded-full border border-amber-500/20 text-amber-400 text-[10px] font-black italic shadow-sm">+{quest.expGained}</div>
+                                                    <div className="bg-amber-500/10 px-3 py-1.5 rounded-full border border-amber-500/20 text-amber-400 text-[10px] font-black italic shadow-sm leading-none">+{quest.expGained} EXP</div>
                                                     <button onClick={() => handleDeleteQuest(quest)} className="p-2 bg-slate-800 rounded-full text-slate-500 hover:text-rose-500 transition-colors"><Icon name="trash-2" className="w-3.5 h-3.5" /></button>
                                                 </div>
                                             </div>
-                                            <div className="aspect-[4/3] bg-slate-950 relative overflow-hidden active:opacity-90 transition-all cursor-pointer" onClick={() => setViewingQuest(quest)}>
-                                                {quest.photoUrl ? <img src={quest.photoUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full flex flex-col items-center justify-center text-slate-800 space-y-2 opacity-20"><Icon name="camera" className="w-12 h-12" /><p className="text-[9px] font-black uppercase tracking-widest">Verified Session</p></div>}
-                                                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-6"><p className="text-sm italic font-medium text-white pr-4 line-clamp-2">"{quest.battleCry || "Quest complete."}"</p></div>
-                                            </div>
-                                            <div className="p-5 space-y-4">
-                                                <div className="space-y-2">{quest.comments?.map((c, i) => (<div key={i} className="bg-white/5 p-4 rounded-3xl border border-white/5 shadow-sm animate-in"><p className="text-[10px] font-black uppercase text-amber-400 mb-1">{c.from}:</p><p className="text-xs italic text-slate-300 font-medium">"{c.text}"</p></div>))}</div>
-                                                <button onClick={() => setCheerState({...cheerState, questId: quest.id === cheerState.questId ? null : quest.id})} className="w-full bg-rose-500/10 border border-rose-500/20 p-4 rounded-2xl flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest text-rose-400 transition-all active:scale-[0.98] shadow-sm"><Icon name="message-circle" className="w-4 h-4" /> Send Cheer</button>
-                                                {cheerState.questId === quest.id && (
-                                                    <div className="mt-4 p-4 bg-slate-950/50 rounded-3xl border border-white/5 space-y-4 shadow-inner">
-                                                        <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-white/5">{PLAYERS.map(p => (<button key={p} onClick={() => setCheerState({...cheerState, sender: p})} className={`flex-1 py-2 rounded-xl text-[9px] font-bold uppercase transition-all ${cheerState.sender === p ? 'bg-white text-slate-900 shadow-lg' : 'text-slate-500'}`}>I am {p}</button>))}</div>
-                                                        <div className="flex gap-2"><input value={cheerState.message} onChange={(e) => setCheerState({...cheerState, message: e.target.value})} placeholder="Type a compliment..." className="flex-1 bg-slate-950 border border-white/10 p-4 rounded-2xl text-sm outline-none focus:border-rose-500 text-white" /><button onClick={sendCheer} className="bg-rose-500 p-4 rounded-2xl shadow-xl active:scale-90 transition-transform"><Icon name="send" className="w-4 h-4 text-white" /></button></div>
-                                                    </div>
-                                                )}
-                                            </div>
+                                            
+                                            {quest.isReward ? (
+                                                <div className="p-10 text-center bg-gradient-to-br from-amber-500/10 to-transparent">
+                                                    <Icon name="gift" className="w-12 h-12 text-amber-500 mx-auto mb-4" />
+                                                    <p className="text-sm font-black italic uppercase text-amber-400 leading-tight">{quest.battleCry}</p>
+                                                </div>
+                                            ) : (
+                                                <div className="aspect-[4/3] bg-slate-950 relative overflow-hidden active:opacity-90 transition-all cursor-pointer" onClick={() => setViewingQuest(quest)}>
+                                                    {quest.photoUrl ? <img src={quest.photoUrl} className="w-full h-full object-cover" alt="Moment" /> : <div className="w-full h-full flex flex-col items-center justify-center text-slate-800 space-y-2 opacity-20"><Icon name="camera" className="w-12 h-12" /><p className="text-[9px] font-black uppercase">Verified Session</p></div>}
+                                                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-6"><p className="text-sm italic font-medium text-white pr-4 line-clamp-2">"{quest.battleCry || "Quest complete."}"</p></div>
+                                                </div>
+                                            )}
                                         </div>
-                                    ))
-                                }</div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'treasury' && (
+                            <div className="space-y-6 animate-in slide-in-from-right-4">
+                                <div className="px-2">
+                                    <h2 className="text-2xl font-black italic uppercase text-white tracking-tighter leading-none font-black">Hero Treasury</h2>
+                                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-2 italic leading-none">Rank-based rewards from your partner</p>
+                                </div>
+                                <div className="space-y-4">
+                                    {REWARDS_TIERS.map((tier, i) => {
+                                        const playerLevel = getLevel(playerData[currentHero]?.exp);
+                                        const isUnlocked = playerLevel >= tier.level;
+                                        const isClaimed = (playerData[currentHero]?.redeemed || []).includes(tier.level);
+                                        return (
+                                            <div key={i} className={`p-6 rounded-[2.5rem] border ${isUnlocked ? 'bg-slate-900 border-white/10' : 'bg-slate-950 border-white/5 opacity-50'} relative overflow-hidden transition-all shadow-xl`}>
+                                                <div className="flex justify-between items-center relative z-10 text-slate-100">
+                                                    <div className="flex items-center gap-4">
+                                                        <div className={`${tier.color} p-3 rounded-2xl shadow-lg`}><Icon name={tier.icon} className="w-6 h-6 text-white" /></div>
+                                                        <div><h3 className="font-black italic uppercase text-sm tracking-tight">{tier.title}</h3><p className="text-[10px] font-medium text-slate-400">{tier.desc}</p></div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        {isClaimed ? <span className="bg-emerald-500/20 text-emerald-400 text-[8px] font-black uppercase px-3 py-1 rounded-full border border-emerald-500/30 italic">Redeemed</span> : 
+                                                         isUnlocked ? <button onClick={() => claimReward(tier)} className="bg-white text-slate-900 text-[8px] font-black uppercase px-4 py-2 rounded-xl shadow-xl active:scale-95 transition-all">Claim</button> :
+                                                         <span className="text-[8px] font-black uppercase text-slate-600 italic">Locked (Rank {tier.level})</span>}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         )}
 
                         {activeTab === 'log' && (
                             <div className="bg-slate-900 rounded-[2.5rem] p-8 border border-white/5 shadow-2xl space-y-8 animate-in slide-in-from-bottom-5">
-                                <div className="flex justify-between items-center"><div><h2 className="text-2xl font-black italic uppercase text-white tracking-tighter leading-none text-3xl">New Quest</h2><p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-2">Log Records</p></div><button onClick={() => setActiveTab('dashboard')} className="p-2 bg-slate-800 rounded-full text-slate-400"><Icon name="x" className="w-5 h-5" /></button></div>
-                                <div className="flex bg-slate-800/50 p-2 rounded-[1.8rem] border border-white/5">{PLAYERS.map(n => (<button key={n} onClick={() => setLogForm({...logForm, player: n})} className={`flex-1 py-4 rounded-2xl font-black uppercase italic tracking-widest text-xs transition-all ${logForm.player === n ? 'bg-slate-900 text-white shadow-2xl border border-white/10' : 'text-slate-500'}`}>{n}</button>))}</div>
+                                <div className="flex justify-between items-center text-slate-100"><div><h2 className="text-2xl font-black italic uppercase tracking-tighter leading-none text-3xl font-black italic">Log Entry</h2><p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-2 italic leading-none">Hero: {currentHero}</p></div><button onClick={() => setActiveTab('dashboard')} className="p-2 bg-slate-800 rounded-full text-slate-400"><Icon name="x" className="w-5 h-5" /></button></div>
                                 <div className="space-y-6">
-                                    <div className="space-y-3"><label className="text-[10px] font-black uppercase text-amber-500 flex items-center gap-2 italic tracking-widest"><Icon name="camera" className="w-3 h-3" /> 인증샷 (Proof)</label>
-                                    <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed rounded-[2.5rem] cursor-pointer bg-slate-950 border-white/10 relative overflow-hidden shadow-inner">{logForm.photoUrl ? <img src={logForm.photoUrl} className="w-full h-full object-cover" /> : <div className="text-center text-slate-600 opacity-30"><Icon name="image" className="w-10 h-10 mb-3 mx-auto" /><p className="text-[10px] font-black uppercase tracking-widest">Select Photo</p></div>}<input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} /></label></div>
-                                    <div className="space-y-3"><label className="text-[10px] font-black uppercase text-indigo-400 flex items-center gap-2 italic tracking-widest"><Icon name="scroll" className="w-3 h-3" /> Battle Cry (Mood)</label><input placeholder="Feeling unstoppable! 💪🔥" className="w-full bg-slate-950 border border-white/10 p-4 rounded-2xl text-sm outline-none text-white shadow-inner focus:border-indigo-500/50" value={logForm.battleCry} onChange={e => setLogForm({...logForm, battleCry: e.target.value})} /></div>
-                                    <div className="space-y-6">
-                                        <div className="space-y-4"><div className="flex justify-between items-center px-1 pt-2"><label className="text-[10px] font-black uppercase text-rose-500 flex items-center gap-2 italic tracking-widest"><Icon name="activity" className="w-3 h-3" /> Cardio</label><button onClick={() => setLogForm({...logForm, cardio: [...logForm.cardio, {type:"", time:0}]})} className="bg-rose-500 p-1 rounded-lg text-white shadow-lg"><Icon name="plus-circle" className="w-5 h-5" /></button></div>
-                                        {logForm.cardio.map((c, i) => (<div key={i} className="flex gap-3 items-center"><input placeholder="e.g. Running" className="flex-1 bg-slate-950 border border-white/10 p-4 rounded-2xl text-sm text-white shadow-inner" value={c.type} onChange={e=>{const nl=[...logForm.cardio]; nl[i].type=e.target.value; setLogForm({...logForm, cardio: nl})}} /><input type="number" placeholder="Mins" className="w-20 bg-slate-950 border border-white/10 p-4 rounded-2xl text-sm text-center text-white shadow-inner" value={c.time||""} onChange={e=>{const nl=[...logForm.cardio]; nl[i].time=e.target.value; setLogForm({...logForm, cardio: nl})}} /></div>))}</div>
-                                        <div className="space-y-4"><div className="flex justify-between items-center px-1 pt-2"><label className="text-[10px] font-black uppercase text-blue-500 flex items-center gap-2 italic tracking-widest"><Icon name="swords" className="w-3 h-3" /> Strength</label><button onClick={() => setLogForm({...logForm, strength: [...logForm.strength, {type:"", time:0, exercises:""}]})} className="bg-blue-500 p-1 rounded-lg text-white shadow-lg"><Icon name="plus-circle" className="w-5 h-5" /></button></div>
-                                        {logForm.strength.map((s, i) => (<div key={i} className="bg-slate-950 border border-white/10 p-6 rounded-[2.5rem] space-y-4 shadow-inner relative text-slate-200">
-                                            {logForm.strength.length > 1 && (<button onClick={() => {const nl=[...logForm.strength]; nl.splice(i, 1); setLogForm({...logForm, strength: nl})}} className="absolute top-5 right-5 text-slate-700 hover:text-rose-500"><Icon name="trash-2" className="w-5 h-5" /></button>)}
-                                            <div className="flex gap-4"><input placeholder="Focus: Legs" className="flex-1 bg-slate-900/50 p-4 rounded-2xl text-xs text-white font-bold" value={s.type} onChange={e=>{const nl=[...logForm.strength]; nl[i].type=e.target.value; setLogForm({...logForm, strength: nl})}} /><input type="number" placeholder="Mins" className="w-20 bg-slate-900/50 p-4 rounded-2xl text-xs text-center font-bold text-white shadow-sm" value={s.time||""} onChange={e=>{const nl=[...logForm.strength]; nl[i].time=e.target.value; setLogForm({...logForm, strength: nl})}} /></div>
-                                            <textarea placeholder="e.g. Bench 3x10..." className="w-full bg-slate-900/50 p-4 rounded-2xl text-[11px] h-24 outline-none text-slate-300 shadow-inner placeholder:text-slate-800/50" value={s.exercises} onChange={e=>{const nl=[...logForm.strength]; nl[i].exercises=e.target.value; setLogForm({...logForm, strength: nl})}} />
-                                        </div>))}</div>
+                                    <div className="space-y-3"><label className="text-[10px] font-black uppercase text-amber-500 flex items-center gap-2 italic tracking-widest leading-none"><Icon name="camera" className="w-3 h-3" /> 인증샷 (Proof)</label>
+                                    <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed rounded-[2.5rem] cursor-pointer bg-slate-950 border-white/10 relative overflow-hidden shadow-inner">{logForm.photoUrl ? <img src={logForm.photoUrl} className="w-full h-full object-cover" alt="Session" /> : <div className="text-center text-slate-600 opacity-30"><Icon name="image" className="w-10 h-10 mb-3 mx-auto" /><p className="text-[10px] font-black uppercase tracking-widest leading-none italic">Select Moment</p></div>}<input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} /></label></div>
+                                    <div className="space-y-3"><label className="text-[10px] font-black uppercase text-indigo-400 flex items-center gap-2 italic tracking-widest leading-none"><Icon name="scroll" className="w-3 h-3" /> Battle Cry</label><input placeholder="Feeling unstoppable! 💪🔥" className="w-full bg-slate-950 border border-white/10 p-4 rounded-2xl text-sm outline-none text-white shadow-inner focus:border-indigo-500/50" value={logForm.battleCry} onChange={e => setLogForm({...logForm, battleCry: e.target.value})} /></div>
+                                    
+                                    <div className="space-y-6 text-slate-100">
+                                        <div className="space-y-4"><div className="flex justify-between items-center px-1 pt-2"><label className="text-[10px] font-black uppercase text-rose-500 flex items-center gap-2 italic tracking-widest leading-none"><Icon name="activity" className="w-3 h-3" /> Cardio</label><button onClick={() => setLogForm({...logForm, cardio: [...logForm.cardio, {type:"", time:0}]})} className="bg-rose-500 p-1 rounded-lg text-white shadow-lg"><Icon name="plus-circle" className="w-5 h-5" /></button></div>
+                                        {logForm.cardio.map((c, i) => (<div key={i} className="flex gap-3 items-center"><input placeholder="e.g. Running" className="flex-1 bg-slate-950 border border-white/10 p-4 rounded-2xl text-sm text-white shadow-inner font-bold" value={c.type} onChange={e=>{const nl=[...logForm.cardio]; nl[i].type=e.target.value; setLogForm({...logForm, cardio: nl})}} /><input type="number" placeholder="Mins" className="w-20 bg-slate-950 border border-white/10 p-4 rounded-2xl text-sm text-center text-white shadow-inner font-bold" value={c.time||""} onChange={e=>{const nl=[...logForm.cardio]; nl[i].time=e.target.value; setLogForm({...logForm, cardio: nl})}} /></div>))}</div>
+                                        <div className="space-y-4"><div className="flex justify-between items-center px-1 pt-2"><label className="text-[10px] font-black uppercase text-blue-500 flex items-center gap-2 italic tracking-widest leading-none"><Icon name="swords" className="w-3 h-3" /> Strength</label><button onClick={() => setLogForm({...logForm, strength: [...logForm.strength, {type:"", time:0, exercises:""}]})} className="bg-blue-500 p-1 rounded-lg text-white shadow-lg"><Icon name="plus-circle" className="w-5 h-5" /></button></div>
+                                        {logForm.strength.map((s, i) => (
+                                            <div key={i} className="bg-slate-950 border border-white/10 p-6 rounded-[2.5rem] space-y-4 shadow-inner relative text-slate-200">
+                                                {logForm.strength.length > 1 && (<button onClick={() => {const nl=[...logForm.strength]; nl.splice(i, 1); setLogForm({...logForm, strength: nl})}} className="absolute top-5 right-5 text-slate-700 hover:text-rose-500 transition-colors p-1"><Icon name="trash-2" className="w-5 h-5" /></button>)}
+                                                <div className="flex gap-4"><input placeholder="Focus Area" className="flex-1 bg-slate-900/50 p-4 rounded-2xl text-xs text-white font-bold" value={s.type} onChange={e=>{const nl=[...logForm.strength]; nl[i].type=e.target.value; setLogForm({...logForm, strength: nl})}} /><input type="number" placeholder="Mins" className="w-20 bg-slate-900/50 p-4 rounded-2xl text-xs text-center font-bold text-white shadow-sm" value={s.time||""} onChange={e=>{const nl=[...logForm.strength]; nl[i].time=e.target.value; setLogForm({...logForm, strength: nl})}} /></div>
+                                                <textarea placeholder="e.g. Bench 3x10..." className="w-full bg-slate-900/50 p-4 rounded-2xl text-[11px] h-24 outline-none text-slate-300 shadow-inner placeholder:text-slate-800/50 leading-relaxed font-medium" value={s.exercises} onChange={e=>{const nl=[...logForm.strength]; nl[i].exercises=e.target.value; setLogForm({...logForm, strength: nl})}} />
+                                            </div>
+                                        ))}</div>
                                     </div>
-                                    <button onClick={handleSaveQuest} disabled={isSaving} className={`w-full bg-gradient-to-r from-rose-600 to-orange-600 text-white py-6 rounded-[2.5rem] font-black italic uppercase tracking-widest shadow-2xl active:scale-[0.97] transition-all text-sm flex items-center justify-center gap-3 ${isSaving ? 'opacity-70' : 'shadow-rose-900/20'}`}>
+                                    <button onClick={handleSaveQuest} disabled={isSaving} className={`w-full bg-gradient-to-r from-rose-600 to-orange-600 text-white py-6 rounded-[2.5rem] font-black italic uppercase tracking-widest shadow-2xl active:scale-[0.97] transition-all text-sm flex items-center justify-center gap-3 ${isSaving ? 'opacity-70' : ''}`}>
                                         {isSaving ? <Icon name="loader" className="w-5 h-5 animate-spin-fast" /> : <Icon name="check-circle" className="w-5 h-5" />}
-                                        {isSaving ? 'Sealing Adventure...' : 'Seal Adventure Record'}
+                                        {isSaving ? 'Sealing...' : 'Seal Adventure'}
                                     </button>
                                 </div>
                             </div>
@@ -389,19 +494,19 @@
 
                         {activeTab === 'hall' && (
                             <div className="space-y-6 animate-in slide-in-from-right-4">
-                                <h2 className="text-2xl font-black italic uppercase text-white tracking-tight px-2">Hall of Heroes</h2>
+                                <h2 className="text-2xl font-black italic uppercase text-white tracking-tight px-2 font-black italic leading-none italic">Hall of Heroes</h2>
                                 <div className="bg-slate-900 rounded-[2.5rem] p-8 border border-white/5 space-y-8 shadow-2xl">
                                     <div className="grid grid-cols-2 gap-4">
-                                        {PLAYERS.map(n => (<div key={n} className="bg-slate-950/50 p-6 rounded-[2rem] border border-white/5 text-center shadow-inner"><p className="text-[10px] font-black uppercase text-slate-500 mb-1 tracking-widest">Rank {getLevel(playerData[n]?.exp)}</p><p className="text-3xl font-black italic text-white leading-none tracking-tighter">{playerData[n]?.exp || 0}</p><p className="text-[8px] font-bold text-amber-500/60 uppercase mt-2 tracking-widest italic leading-none">Total EXP</p></div>))}
+                                        {PLAYERS.map(n => (<div key={n} className="bg-slate-950/50 p-6 rounded-[2rem] border border-white/5 text-center shadow-inner"><p className="text-[10px] font-black uppercase text-slate-500 mb-1 tracking-widest leading-none">Rank {getLevel(playerData[n]?.exp)}</p><p className="text-3xl font-black italic text-white leading-none tracking-tighter">{playerData[n]?.exp || 0}</p><p className="text-[8px] font-bold text-amber-500/60 uppercase mt-2 tracking-widest italic leading-none">Total EXP</p></div>))}
                                     </div>
                                     <div className="pt-8 border-t border-white/5 space-y-8 text-center text-slate-100">
-                                        <div className="flex items-center justify-between px-2 text-slate-500"><h4 className="text-[10px] font-black uppercase flex items-center gap-1.5 italic tracking-widest leading-none"><Icon name="bar-chart-3" className="w-3 h-3" /> Training Goal</h4></div>
+                                        <div className="flex items-center justify-between px-2 text-slate-500"><h4 className="text-[10px] font-black uppercase flex items-center gap-1.5 italic tracking-widest leading-none italic leading-none"><Icon name="bar-chart-3" className="w-3 h-3" /> Training Volume</h4></div>
                                         <div className="flex gap-4">
                                             {PLAYERS.map(p => (
                                                 <div key={p} className="flex-1 p-4 bg-slate-900/40 rounded-3xl border border-white/5 text-center shadow-inner">
                                                     <p className="text-[10px] font-black uppercase mb-3 text-slate-400 italic leading-none">{p}</p>
                                                     <div className="text-3xl font-black italic text-sky-400 leading-none">{getWeeklyProgress(p)}/3</div>
-                                                    <p className="text-[8px] text-slate-600 font-bold uppercase mt-2 tracking-widest leading-none">Weekly Turns</p>
+                                                    <p className="text-[8px] text-slate-600 font-bold uppercase mt-2 tracking-widest leading-none">Complete</p>
                                                 </div>
                                             ))}
                                         </div>
@@ -412,44 +517,36 @@
 
                         {activeTab === 'profile' && (
                             <div className="space-y-4 animate-in slide-in-from-right-4">
-                                <h2 className="text-2xl font-black italic uppercase text-white tracking-tight px-2">Hero Hub</h2>
+                                <h2 className="text-2xl font-black italic uppercase text-white tracking-tight px-2 font-black italic leading-none italic">Hero Hub</h2>
                                 <div className="bg-slate-900 rounded-[2.5rem] p-6 border border-white/5 space-y-6 shadow-2xl">
-                                    <div className="space-y-4 text-slate-100">
-                                        {PLAYERS.map(n => (
-                                            <div key={n} className="space-y-3 p-5 bg-slate-950 rounded-[2rem] border border-white/5 shadow-inner">
-                                                <div className="flex items-center justify-between">
-                                                    <p className="font-black italic uppercase text-slate-300 tracking-widest">{n}</p>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-[10px] font-bold text-rose-500 flex items-center gap-1"><Icon name="heart" className="w-3 h-3 fill-rose-500" /> {playerData[n]?.heartPoints || 0}</span>
-                                                        <div className="flex gap-0.5">{[...Array(3)].map((_,i) => <Icon key={i} name="star" className={`w-3.5 h-3.5 ${getLevel(playerData[n]?.exp) > i*5 ? 'text-amber-400 fill-amber-400' : 'text-slate-800'}`} />)}</div>
-                                                    </div>
-                                                </div>
-                                                <div className="grid grid-cols-3 gap-2">
-                                                    <div className="space-y-1"><label className="text-[7px] font-black text-slate-600 uppercase tracking-widest leading-none">Age</label><input type="number" value={playerData[n]?.age || ""} onChange={(e) => updateLocalProfileStat(n, 'age', e.target.value)} className="w-full bg-slate-900 p-2.5 rounded-xl border border-white/5 text-xs font-bold text-white outline-none focus:border-white/10 transition-all shadow-inner" /></div>
-                                                    <div className="space-y-1"><label className="text-[7px] font-black text-slate-600 uppercase tracking-widest leading-none">Height</label><input type="number" value={playerData[n]?.height || ""} onChange={(e) => updateLocalProfileStat(n, 'height', e.target.value)} className="w-full bg-slate-900 p-2.5 rounded-xl border border-white/5 text-xs font-bold text-white outline-none focus:border-white/10 transition-all shadow-inner" /></div>
-                                                    <div className="space-y-1"><label className="text-[7px] font-black text-slate-600 uppercase tracking-widest leading-none">Weight</label><input type="number" value={playerData[n]?.weight || ""} onChange={(e) => updateLocalProfileStat(n, 'weight', e.target.value)} className="w-full bg-slate-900 p-2.5 rounded-xl border border-white/5 text-xs font-bold text-white outline-none focus:border-white/10 transition-all shadow-inner" /></div>
-                                                </div>
+                                    {PLAYERS.map(n => (
+                                        <div key={n} className="space-y-3 p-5 bg-slate-950 rounded-[2rem] border border-white/5 shadow-inner text-slate-100">
+                                            <div className="flex items-center justify-between">
+                                                <p className="font-black italic uppercase text-slate-300 tracking-widest leading-none">{n}</p>
+                                                <div className="flex gap-0.5">{[...Array(3)].map((_,i) => <Icon key={i} name="star" className={`w-3.5 h-3.5 ${getLevel(playerData[n]?.exp) > i*5 ? 'text-amber-400 fill-amber-400' : 'text-slate-800'}`} />)}</div>
                                             </div>
-                                        ))}
-                                    </div>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <div className="space-y-1"><label className="text-[7px] font-black text-slate-600 uppercase tracking-widest leading-none italic">Age</label><input type="number" value={playerData[n]?.age || ""} onChange={(e) => updateLocalProfileStat(n, 'age', e.target.value)} className="w-full bg-slate-900 p-2.5 rounded-xl border border-white/5 text-xs font-bold text-white outline-none focus:border-white/10 shadow-inner" /></div>
+                                                <div className="space-y-1"><label className="text-[7px] font-black text-slate-600 uppercase tracking-widest leading-none italic">Height</label><input type="number" value={playerData[n]?.height || ""} onChange={(e) => updateLocalProfileStat(n, 'height', e.target.value)} className="w-full bg-slate-900 p-2.5 rounded-xl border border-white/5 text-xs font-bold text-white outline-none focus:border-white/10 shadow-inner" /></div>
+                                                <div className="space-y-1"><label className="text-[7px] font-black text-slate-600 uppercase tracking-widest leading-none italic">Weight</label><input type="number" value={playerData[n]?.weight || ""} onChange={(e) => updateLocalProfileStat(n, 'weight', e.target.value)} className="w-full bg-slate-900 p-2.5 rounded-xl border border-white/5 text-xs font-bold text-white outline-none focus:border-white/10 shadow-inner" /></div>
+                                            </div>
+                                        </div>
+                                    ))}
                                     <button onClick={handleSaveProfile} disabled={isProfileSaving} className={`w-full bg-indigo-600 hover:bg-indigo-500 text-white py-4 rounded-2xl font-black italic uppercase tracking-widest text-xs flex items-center justify-center gap-3 transition-all active:scale-95 shadow-xl shadow-indigo-900/20 ${isProfileSaving ? 'opacity-50' : ''}`}>
                                         {isProfileSaving ? <Icon name="loader" className="w-4 h-4 animate-spin-fast" /> : <Icon name="save" className="w-4 h-4" />}
-                                        {isProfileSaving ? 'Updating Registry...' : 'Save Hero Stats'}
+                                        {isProfileSaving ? 'Saving...' : 'Save Hero Stats'}
                                     </button>
-                                </div>
-                                <div className="bg-gradient-to-br from-indigo-950/40 to-slate-900 border border-indigo-500/20 p-5 rounded-[2rem] shadow-xl space-y-2 text-center">
-                                    <h3 className="text-xs font-black uppercase text-white tracking-tight leading-none">Spirit Link Guide</h3>
-                                    <p className="text-[9px] text-slate-500 leading-tight">Safari (iOS) or Chrome (Android) > <b>'Add to Home Screen'</b> for the full experience!</p>
                                 </div>
                             </div>
                         )}
                     </main>
 
-                    <nav className="fixed bottom-0 left-0 right-0 bg-slate-950/90 backdrop-blur-3xl border-t border-white/5 p-3 flex justify-around items-center max-w-md mx-auto z-40 shadow-2xl">
-                        <button onClick={() => setActiveTab('dashboard')} className={`flex flex-col items-center p-3 rounded-2xl transition-all ${activeTab === 'dashboard' ? 'text-rose-500 bg-rose-500/10' : 'text-slate-500 hover:text-slate-300'}`}><Icon name="map" className="w-6 h-6" /><span className="text-[9px] font-black uppercase mt-1 italic tracking-widest leading-none">Map</span></button>
-                        <button onClick={() => setActiveTab('hall')} className={`flex flex-col items-center p-3 rounded-2xl transition-all ${activeTab === 'hall' ? 'text-amber-500 bg-amber-500/10' : 'text-slate-500 hover:text-slate-300'}`}><Icon name="trophy" className="w-6 h-6" /><span className="text-[9px] font-black uppercase mt-1 italic tracking-widest leading-none">Hall</span></button>
+                    <nav className="fixed bottom-0 left-0 right-0 bg-slate-950/90 backdrop-blur-3xl border-t border-white/5 p-3 flex justify-around items-center max-w-md mx-auto z-40 shadow-2xl text-slate-400">
+                        <button onClick={() => setActiveTab('dashboard')} className={`flex flex-col items-center p-3 rounded-2xl transition-all ${activeTab === 'dashboard' ? 'text-rose-500 bg-rose-500/10' : ''}`}><Icon name="map" className="w-6 h-6" /><span className="text-[9px] font-black uppercase mt-1 italic tracking-widest leading-none font-bold">Map</span></button>
+                        <button onClick={() => setActiveTab('treasury')} className={`flex flex-col items-center p-3 rounded-2xl transition-all ${activeTab === 'treasury' ? 'text-amber-500 bg-amber-500/10' : ''}`}><Icon name="gift" className="w-6 h-6" /><span className="text-[9px] font-black uppercase mt-1 italic tracking-widest leading-none font-bold">Vault</span></button>
                         <button onClick={() => setActiveTab('log')} className="bg-gradient-to-tr from-rose-500 to-orange-600 text-white p-5 rounded-full -mt-12 shadow-2xl shadow-rose-900/40 active:scale-90 transition-transform ring-8 ring-[#0f172a]"><Icon name="plus" className="w-7 h-7" /></button>
-                        <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center p-3 rounded-2xl transition-all ${activeTab === 'profile' ? 'text-indigo-500 bg-indigo-500/10' : 'text-slate-500 hover:text-slate-300'}`}><Icon name="user" className="w-6 h-6" /><span className="text-[9px] font-black uppercase mt-1 italic tracking-widest leading-none">Hero</span></button>
+                        <button onClick={() => setActiveTab('hall')} className={`flex flex-col items-center p-3 rounded-2xl transition-all ${activeTab === 'hall' ? 'text-emerald-500 bg-emerald-500/10' : ''}`}><Icon name="trophy" className="w-6 h-6" /><span className="text-[9px] font-black uppercase mt-1 italic tracking-widest leading-none font-bold">Hall</span></button>
+                        <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center p-3 rounded-2xl transition-all ${activeTab === 'profile' ? 'text-indigo-500 bg-indigo-500/10' : ''}`}><Icon name="user" className="w-6 h-6" /><span className="text-[9px] font-black uppercase mt-1 italic tracking-widest leading-none font-bold">Hero</span></button>
                     </nav>
                 </div>
             );
