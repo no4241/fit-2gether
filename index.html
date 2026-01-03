@@ -195,7 +195,7 @@
             const [history, setHistory] = useState([]);
             const [viewingQuest, setViewingQuest] = useState(null);
             const [celebration, setCelebration] = useState({ type: null, data: null });
-            const [cheerState, setCheerState] = useState({ questId: null, message: "", sender: "Max" });
+            const [cheerState, setCheerState] = useState({ questId: null, message: "" });
             const [isSaving, setIsSaving] = useState(false);
             const [isProfileSaving, setIsProfileSaving] = useState(false);
             const [errorMessage, setErrorMessage] = useState("");
@@ -285,7 +285,6 @@
                 const cardioTime = logForm.cardio.reduce((a,c) => a + (parseInt(c.time) || 0), 0);
                 const strengthTime = logForm.strength.reduce((a,c) => a + (parseInt(c.time) || 0), 0);
                 
-                // Logic: Time determines EXP, each entry = 1 consistency point.
                 let rawTurnsForExp = Math.floor(cardioTime / 30) + Math.floor(strengthTime / 30);
                 let sidesForExp = logForm.sideQuestList.filter(s => s.type !== "").length + (cardioTime > 0 && cardioTime % 30 !== 0 ? 1 : 0);
                 const exp = (Math.max(1, rawTurnsForExp) * 100) + (sidesForExp * 40);
@@ -306,7 +305,7 @@
                         else setCelebration({ type: 'goalReached', data: { player: activePlayer } });
                     }
                     setActiveTab('dashboard');
-                    setLogForm({ player: activePlayer, cardio: [{type:"", time:0}], strength: [{type:"", time:0, exercises:""}], sideQuestList: [{type:""}], battleCry: "", photoUrl: "" });
+                    setLogForm({ player: currentHero, cardio: [{type:"", time:0}], strength: [{type:"", time:0, exercises:""}], sideQuestList: [{type:""}], battleCry: "", photoUrl: "" });
                 } catch(e) { setErrorMessage("Save Failed: Photo might be too big."); } 
                 finally { setIsSaving(false); }
             };
@@ -341,15 +340,16 @@
             };
 
             const sendCheer = async () => {
-                if (!cheerState.message.trim()) return;
+                if (!cheerState.message.trim() || !cheerState.questId) return;
                 try {
-                    await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('quests').doc(cheerState.questId).update({
+                    const questRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('quests').doc(cheerState.questId);
+                    await questRef.update({
                         comments: firebase.firestore.FieldValue.arrayUnion({ from: currentHero, text: cheerState.message, timestamp: Date.now() })
                     });
                     await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('stats').doc(currentHero).set({
                         heartPoints: (playerData[currentHero]?.heartPoints || 0) + 10
                     }, { merge: true });
-                    setCheerState({ ...cheerState, questId: null, message: "" });
+                    setCheerState({ questId: null, message: "" });
                 } catch(e) { setErrorMessage("Cheer failed."); }
             };
 
@@ -427,6 +427,30 @@
                                                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-6"><p className="text-sm italic font-medium text-white pr-4 line-clamp-2">"{quest.battleCry || "Quest complete."}"</p></div>
                                                 </div>
                                             )}
+
+                                            {/* COMMENTS & CHEER SECTION */}
+                                            <div className="p-5 space-y-4 bg-slate-900/50">
+                                                <div className="space-y-2">
+                                                    {quest.comments?.map((c, i) => (
+                                                        <div key={i} className="bg-white/5 p-4 rounded-3xl border border-white/5 shadow-sm animate-in fade-in">
+                                                            <p className="text-[10px] font-black uppercase text-amber-400 mb-1 italic">{c.from} Cheers:</p>
+                                                            <p className="text-xs italic text-slate-300 font-medium leading-relaxed">"{c.text}"</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                <button onClick={() => setCheerState({...cheerState, questId: quest.id === cheerState.questId ? null : quest.id})} className="w-full bg-rose-500/10 border border-rose-500/20 p-4 rounded-2xl flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest text-rose-400 transition-all active:scale-[0.98] shadow-sm">
+                                                    <Icon name="message-circle" className="w-4 h-4" /> Send Cheer
+                                                </button>
+                                                {cheerState.questId === quest.id && (
+                                                    <div className="mt-4 p-4 bg-slate-950/50 rounded-3xl border border-white/5 space-y-3 shadow-inner animate-in slide-in-from-top-2">
+                                                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest px-1">Cheer as {currentHero}</p>
+                                                        <div className="flex gap-2">
+                                                            <input value={cheerState.message} onChange={(e) => setCheerState({...cheerState, message: e.target.value})} placeholder="Type a compliment..." className="flex-1 bg-slate-950 border border-white/10 p-4 rounded-2xl text-sm outline-none focus:border-rose-500 text-white" onKeyDown={(e) => e.key === 'Enter' && sendCheer()}/>
+                                                            <button onClick={sendCheer} className="bg-rose-500 p-4 rounded-2xl shadow-xl active:scale-90 transition-transform"><Icon name="send" className="w-4 h-4 text-white" /></button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
